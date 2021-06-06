@@ -1,0 +1,212 @@
+diff --git a/keras_layers/keras_layer_AnchorBoxes.py b/keras_layers/keras_layer_AnchorBoxes.py
+index 5e788df..10be3bb 100644
+--- a/keras_layers/keras_layer_AnchorBoxes.py
++++ b/keras_layers/keras_layer_AnchorBoxes.py
+@@ -18,9 +18,9 @@ limitations under the License.
+ 
+ from __future__ import division
+ import numpy as np
+-import keras.backend as K
+-from keras.engine.topology import InputSpec
+-from keras.engine.topology import Layer
++import tensorflow.keras.backend as K
++from tensorflow.python.keras.engine.input_spec import InputSpec
++from tensorflow.python.keras.engine.base_layer import Layer
+ 
+ from bounding_box_utils.bounding_box_utils import convert_coordinates
+ 
+@@ -168,10 +168,18 @@ class AnchorBoxes(Layer):
+         wh_list = np.array(wh_list)
+ 
+         # We need the shape of the input tensor
++        
++        if hasattr(x, '_keras_shape'):
++            tmp_hape = x._keras_shape
++        elif hasattr(x, 'int_shape'):
++            tmp_hape = x.int_shape()
++        elif hasattr(x, 'get_shape'):
++            tmp_hape = x.get_shape()
++        
+         if K.image_data_format() == 'channels_last':
+-            batch_size, feature_map_height, feature_map_width, feature_map_channels = x._keras_shape
++            batch_size, feature_map_height, feature_map_width, feature_map_channels = tmp_hape
+         else: # Not yet relevant since TensorFlow is the only supported backend right now, but it can't harm to have this in here for the future
+-            batch_size, feature_map_channels, feature_map_height, feature_map_width = x._keras_shape
++            batch_size, feature_map_channels, feature_map_height, feature_map_width = tmp_hape
+ 
+         # Compute the grid of box center points. They are identical for all aspect ratios.
+ 
+diff --git a/keras_layers/keras_layer_DecodeDetections.py b/keras_layers/keras_layer_DecodeDetections.py
+index 3fc4d57..3c70f45 100644
+--- a/keras_layers/keras_layer_DecodeDetections.py
++++ b/keras_layers/keras_layer_DecodeDetections.py
+@@ -20,9 +20,9 @@ limitations under the License.
+ from __future__ import division
+ import numpy as np
+ import tensorflow as tf
+-import keras.backend as K
+-from keras.engine.topology import InputSpec
+-from keras.engine.topology import Layer
++import tensorflow.keras.backend as K
++from tensorflow.python.keras.engine.input_spec import InputSpec
++from tensorflow.python.keras.engine.base_layer import Layer
+ 
+ class DecodeDetections(Layer):
+     '''
+@@ -171,7 +171,7 @@ class DecodeDetections(Layer):
+                 # a tensor of shape (n_boxes, 1 + 4 coordinates) that contains the
+                 # confidnece values for just one class, determined by `index`.
+                 confidences = tf.expand_dims(batch_item[..., index], axis=-1)
+-                class_id = tf.fill(dims=tf.shape(confidences), value=tf.to_float(index))
++                class_id = tf.fill(dims=tf.shape(confidences), value=tf.cast(index, tf.float32))
+                 box_coordinates = batch_item[...,-4:]
+ 
+                 single_class = tf.concat([class_id, confidences, box_coordinates], axis=-1)
+diff --git a/keras_layers/keras_layer_DecodeDetectionsFast.py b/keras_layers/keras_layer_DecodeDetectionsFast.py
+index f8ab221..00a46fd 100644
+--- a/keras_layers/keras_layer_DecodeDetectionsFast.py
++++ b/keras_layers/keras_layer_DecodeDetectionsFast.py
+@@ -22,9 +22,9 @@ limitations under the License.
+ from __future__ import division
+ import numpy as np
+ import tensorflow as tf
+-import keras.backend as K
+-from keras.engine.topology import InputSpec
+-from keras.engine.topology import Layer
++import tensorflow.keras.backend as K
++from tensorflow.python.keras.engine.input_spec import InputSpec
++from tensorflow.python.keras.engine.base_layer import Layer
+ 
+ class DecodeDetectionsFast(Layer):
+     '''
+@@ -123,7 +123,7 @@ class DecodeDetectionsFast(Layer):
+         #####################################################################################
+ 
+         # Extract the predicted class IDs as the indices of the highest confidence values.
+-        class_ids = tf.expand_dims(tf.to_float(tf.argmax(y_pred[...,:-12], axis=-1)), axis=-1)
++        class_ids = tf.expand_dims(tf.cast(tf.argmax(y_pred[...,:-12], axis=-1), tf.float32), axis=-1)
+         # Extract the confidences of the maximal classes.
+         confidences = tf.reduce_max(y_pred[...,:-12], axis=-1, keep_dims=True)
+ 
+diff --git a/keras_layers/keras_layer_L2Normalization.py b/keras_layers/keras_layer_L2Normalization.py
+index 9140ca5..5b9757a 100644
+--- a/keras_layers/keras_layer_L2Normalization.py
++++ b/keras_layers/keras_layer_L2Normalization.py
+@@ -18,9 +18,9 @@ limitations under the License.
+ 
+ from __future__ import division
+ import numpy as np
+-import keras.backend as K
+-from keras.engine.topology import InputSpec
+-from keras.engine.topology import Layer
++import tensorflow.keras.backend as K
++from tensorflow.python.keras.engine.input_spec import InputSpec
++from tensorflow.python.keras.engine.base_layer import Layer
+ 
+ class L2Normalization(Layer):
+     '''
+@@ -55,7 +55,7 @@ class L2Normalization(Layer):
+         self.input_spec = [InputSpec(shape=input_shape)]
+         gamma = self.gamma_init * np.ones((input_shape[self.axis],))
+         self.gamma = K.variable(gamma, name='{}_gamma'.format(self.name))
+-        self.trainable_weights = [self.gamma]
++        self._trainable_weights = [self.gamma]
+         super(L2Normalization, self).build(input_shape)
+ 
+     def call(self, x, mask=None):
+diff --git a/keras_loss_function/keras_ssd_loss.py b/keras_loss_function/keras_ssd_loss.py
+index 83567f5..05d19a4 100644
+--- a/keras_loss_function/keras_ssd_loss.py
++++ b/keras_loss_function/keras_ssd_loss.py
+@@ -130,14 +130,14 @@ class SSDLoss:
+ 
+         # 1: Compute the losses for class and box predictions for every box.
+ 
+-        classification_loss = tf.to_float(self.log_loss(y_true[:,:,:-12], y_pred[:,:,:-12])) # Output shape: (batch_size, n_boxes)
+-        localization_loss = tf.to_float(self.smooth_L1_loss(y_true[:,:,-12:-8], y_pred[:,:,-12:-8])) # Output shape: (batch_size, n_boxes)
++        classification_loss = tf.cast(self.log_loss(y_true[:,:,:-12], y_pred[:,:,:-12]), tf.float32) # Output shape: (batch_size, n_boxes)
++        localization_loss = tf.cast(self.smooth_L1_loss(y_true[:,:,-12:-8], y_pred[:,:,-12:-8]), tf.float32) # Output shape: (batch_size, n_boxes)
+ 
+         # 2: Compute the classification losses for the positive and negative targets.
+ 
+         # Create masks for the positive and negative ground truth classes.
+         negatives = y_true[:,:,0] # Tensor of shape (batch_size, n_boxes)
+-        positives = tf.to_float(tf.reduce_max(y_true[:,:,1:-12], axis=-1)) # Tensor of shape (batch_size, n_boxes)
++        positives = tf.cast(tf.reduce_max(y_true[:,:,1:-12], axis=-1), tf.float32) # Tensor of shape (batch_size, n_boxes)
+ 
+         # Count the number of positive boxes (classes 1 to n) in y_true across the whole batch.
+         n_positive = tf.reduce_sum(positives)
+@@ -185,7 +185,7 @@ class SSDLoss:
+             negatives_keep = tf.scatter_nd(indices=tf.expand_dims(indices, axis=1),
+                                            updates=tf.ones_like(indices, dtype=tf.int32),
+                                            shape=tf.shape(neg_class_loss_all_1D)) # Tensor of shape (batch_size * n_boxes,)
+-            negatives_keep = tf.to_float(tf.reshape(negatives_keep, [batch_size, n_boxes])) # Tensor of shape (batch_size, n_boxes)
++            negatives_keep = tf.cast(tf.reshape(negatives_keep, [batch_size, n_boxes]), tf.float32) # Tensor of shape (batch_size, n_boxes)
+             # ...and use it to keep only those boxes and mask all other classification losses
+             neg_class_loss = tf.reduce_sum(classification_loss * negatives_keep, axis=-1) # Tensor of shape (batch_size,)
+             return neg_class_loss
+@@ -206,6 +206,6 @@ class SSDLoss:
+         # because the relevant criterion to average our loss over is the number of positive boxes in the batch
+         # (by which we're dividing in the line above), not the batch size. So in order to revert Keras' averaging
+         # over the batch size, we'll have to multiply by it.
+-        total_loss = total_loss * tf.to_float(batch_size)
++        total_loss = total_loss * tf.cast(batch_size, tf.float32)
+ 
+         return total_loss
+diff --git a/models/keras_ssd300.py b/models/keras_ssd300.py
+index 6aed701..df30047 100644
+--- a/models/keras_ssd300.py
++++ b/models/keras_ssd300.py
+@@ -18,10 +18,10 @@ limitations under the License.
+ 
+ from __future__ import division
+ import numpy as np
+-from keras.models import Model
+-from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
+-from keras.regularizers import l2
+-import keras.backend as K
++from tensorflow.keras.models import Model
++from tensorflow.keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
++from tensorflow.keras.regularizers import l2
++import tensorflow.keras.backend as K
+ 
+ from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+ from keras_layers.keras_layer_L2Normalization import L2Normalization
+diff --git a/models/keras_ssd512.py b/models/keras_ssd512.py
+index 3f69ac6..6ce62a3 100644
+--- a/models/keras_ssd512.py
++++ b/models/keras_ssd512.py
+@@ -18,10 +18,10 @@ limitations under the License.
+ 
+ from __future__ import division
+ import numpy as np
+-from keras.models import Model
+-from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
+-from keras.regularizers import l2
+-import keras.backend as K
++from tensorflow.keras.models import Model
++from tensorflow.keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
++from tensorflow.keras.regularizers import l2
++import tensorflow.keras.backend as K
+ 
+ from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+ from keras_layers.keras_layer_L2Normalization import L2Normalization
+diff --git a/models/keras_ssd7.py b/models/keras_ssd7.py
+index 5409599..2c2fa91 100644
+--- a/models/keras_ssd7.py
++++ b/models/keras_ssd7.py
+@@ -18,10 +18,10 @@ limitations under the License.
+ 
+ from __future__ import division
+ import numpy as np
+-from keras.models import Model
+-from keras.layers import Input, Lambda, Conv2D, MaxPooling2D, BatchNormalization, ELU, Reshape, Concatenate, Activation
+-from keras.regularizers import l2
+-import keras.backend as K
++from tensorflow.keras.models import Model
++from tensorflow.keras.layers import Input, Lambda, Conv2D, MaxPooling2D, BatchNormalization, ELU, Reshape, Concatenate, Activation
++from tensorflow.keras.regularizers import l2
++import tensorflow.keras.backend as K
+ 
+ from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+ from keras_layers.keras_layer_DecodeDetections import DecodeDetections

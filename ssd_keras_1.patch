@@ -1,0 +1,35 @@
+diff --git a/keras_layers/keras_layer_AnchorBoxes.py b/keras_layers/keras_layer_AnchorBoxes.py
+index 83a7ab5..5e788df 100644
+--- a/keras_layers/keras_layer_AnchorBoxes.py
++++ b/keras_layers/keras_layer_AnchorBoxes.py
+@@ -168,7 +168,7 @@ class AnchorBoxes(Layer):
+         wh_list = np.array(wh_list)
+ 
+         # We need the shape of the input tensor
+-        if K.image_dim_ordering() == 'tf':
++        if K.image_data_format() == 'channels_last':
+             batch_size, feature_map_height, feature_map_width, feature_map_channels = x._keras_shape
+         else: # Not yet relevant since TensorFlow is the only supported backend right now, but it can't harm to have this in here for the future
+             batch_size, feature_map_channels, feature_map_height, feature_map_width = x._keras_shape
+@@ -255,7 +255,7 @@ class AnchorBoxes(Layer):
+         return boxes_tensor
+ 
+     def compute_output_shape(self, input_shape):
+-        if K.image_dim_ordering() == 'tf':
++        if K.image_data_format() == 'channels_last':
+             batch_size, feature_map_height, feature_map_width, feature_map_channels = input_shape
+         else: # Not yet relevant since TensorFlow is the only supported backend right now, but it can't harm to have this in here for the future
+             batch_size, feature_map_channels, feature_map_height, feature_map_width = input_shape
+diff --git a/keras_layers/keras_layer_L2Normalization.py b/keras_layers/keras_layer_L2Normalization.py
+index e2c71bf..9140ca5 100644
+--- a/keras_layers/keras_layer_L2Normalization.py
++++ b/keras_layers/keras_layer_L2Normalization.py
+@@ -44,7 +44,7 @@ class L2Normalization(Layer):
+     '''
+ 
+     def __init__(self, gamma_init=20, **kwargs):
+-        if K.image_dim_ordering() == 'tf':
++        if K.image_data_format() == 'channels_last':
+             self.axis = 3
+         else:
+             self.axis = 1
